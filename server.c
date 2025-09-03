@@ -320,17 +320,22 @@ static void server_mainloop(void) {
 						server_sink_client();
 					server_send_screen_buffer(c);
 					break;
-				case MSG_RESIZE:
-					c->state = STATE_ATTACHED;
-					if (!(c->flags & CLIENT_READONLY) && c == server.clients) {
-						debug("server-ioct: TIOCSWINSZ\n");
-						struct winsize ws = { 0 };
-						ws.ws_row = client_packet.u.ws.rows;
-						ws.ws_col = client_packet.u.ws.cols;
-						ioctl(server.pty, TIOCSWINSZ, &ws);
+				case MSG_RESIZE: {
+						pid_t group_id;
+
+						c->state = STATE_ATTACHED;
+						if (!(c->flags & CLIENT_READONLY) && c == server.clients) {
+							debug("server-ioct: TIOCSWINSZ\n");
+							struct winsize ws = { 0 };
+							ws.ws_row = client_packet.u.ws.rows;
+							ws.ws_col = client_packet.u.ws.cols;
+							ioctl(server.pty, TIOCSWINSZ, &ws);
+						}
+
+						group_id = tcgetpgrp(server.pty);
+						kill(-group_id, SIGWINCH);
+						break;
 					}
-					kill(-server.pid, SIGWINCH);
-					break;
 				case MSG_EXIT:
 					exit_packet_delivered = true;
 					/* fall through */
