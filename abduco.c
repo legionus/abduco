@@ -101,6 +101,7 @@ struct Client {
 		CLIENT_READONLY = 1 << 0,
 		CLIENT_LOWPRIORITY = 1 << 1,
 	} flags;
+	bool msg_exit_sent;
 	Client *next;
 };
 

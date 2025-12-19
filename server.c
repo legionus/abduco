@@ -360,6 +360,8 @@ static void server_mainloop(void) {
 			if (c->state == STATE_DISCONNECTED) {
 				bool first = (c == server.clients);
 				Client *t = c->next;
+				if (c->msg_exit_sent)
+					exit_packet_delivered = true;
 				client_free(c);
 				*prev_next = c = t;
 				if (first && server.clients) {
@@ -385,7 +387,9 @@ static void server_mainloop(void) {
 						.u.i = server.exit_status,
 						.len = sizeof(pkt.u.i),
 					};
-					if (!server_send_packet(c, &pkt))
+					if (server_send_packet(c, &pkt))
+						c->msg_exit_sent = true;
+					else
 						FD_SET_MAX(c->socket, &new_writefds, new_fdmax);
 				} else {
 					FD_SET_MAX(c->socket, &new_writefds, new_fdmax);
