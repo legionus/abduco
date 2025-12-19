@@ -236,7 +236,42 @@ static void die(const char *s) {
 
 static void usage(void) {
 	fprintf(stderr, "usage: abduco [-a|-A|-c|-n] [-p] [-r] [-q] [-l] [-f] [-e detachkey] [-L num] name command\n");
+	fprintf(stderr, "Try 'abduco -h' for more information.\n");
 	exit(EXIT_FAILURE);
+}
+
+static void help(void) {
+	puts("abduco - terminal session manager\n");
+	puts("usage: abduco [-a|-A|-c|-d|-n] [options] name [command]\n");
+	puts("Actions (roles are mutually exclusive):");
+	puts("  -a          Attach to an existing session");
+	puts("  -A          Attach to existing session or create a new one");
+	puts("  -c          Create a new session and attach to it");
+	puts("  -d          Detect if session exists (exit status 0 if true)");
+	puts("  -n          Create a new session but do not attach to it\n");
+	puts("Options:");
+	puts("  -e <key>    Set detach key (default: ^\\)");
+	puts("  -f          Force create session when terminated session exists");
+	puts("  -l          Attach with lowest priority (last to control terminal size)");
+	puts("  -L <num>    Set screen buffer size in lines (default: 120, 0 to disable)");
+	puts("  -p          Pass through mode (implies -q and -l)");
+	puts("  -q          Quiet, do not print informative messages");
+	puts("  -r          Read-only session, user input is ignored");
+	puts("  -v          Print version information and exit");
+	puts("  -h          Show this help message and exit\n");
+	puts("Environment variables:");
+	puts("  ABDUCO_CMD         Default command if none specified (default: dvtm)");
+	puts("  ABDUCO_SOCKET_DIR  Directory for session sockets");
+	puts("  ABDUCO_SESSION     Session name (set by abduco for child process)");
+	puts("  ABDUCO_SOCKET      Socket path (set by abduco for child process)\n");
+	puts("Session sockets are stored in (first existing is used):");
+	puts("  $ABDUCO_SOCKET_DIR/abduco/");
+	puts("  $HOME/.abduco/");
+	puts("  $TMPDIR/abduco/$USER/");
+	puts("  /tmp/abduco/$USER/\n");
+	puts("Detach key: Press the detach key (default Ctrl-\\) to detach from session.");
+	puts("List sessions: Run abduco without arguments to list active sessions.");
+	exit(EXIT_SUCCESS);
 }
 
 static bool xsnprintf(char *buf, size_t size, const char *fmt, ...) {
@@ -618,7 +653,7 @@ int main(int argc, char *argv[]) {
 	server.name = basename(argv[0]);
 	gethostname(server.host+1, sizeof(server.host) - 1);
 
-	while ((opt = getopt(argc, argv, "aAcdlne:fpqrvL:")) != -1) {
+	while ((opt = getopt(argc, argv, "aAcdlne:fhpqrvL:")) != -1) {
 		switch (opt) {
 		case 'a':
 		case 'A':
@@ -636,6 +671,9 @@ int main(int argc, char *argv[]) {
 			break;
 		case 'f':
 			force = true;
+			break;
+		case 'h':
+			help();
 			break;
 		case 'p':
 			passthrough = true;
