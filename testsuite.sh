@@ -45,7 +45,7 @@ expected_abduco_epilog() {
 # $1 => session-name, $2 => cmd to run
 expected_abduco_attached_output() {
 	expected_abduco_prolog
-	$2
+	$2 2>&1
 	expected_abduco_epilog "$1" $?
 }
 
@@ -79,7 +79,7 @@ run_test_attached() {
 
 	TESTS_RUN=$((TESTS_RUN + 1))
 	echo -n "Running test attached: $name "
-	expected_abduco_attached_output "$name" "$cmd" > "$output_expected" 2>&1
+	expected_abduco_attached_output "$name" "$cmd" > "$output_expected"
 
 	if $ABDUCO -c "$name" $cmd 2>&1 | sed 's/.$//' > "$output" && sleep 1 &&
 	   diff -u "$output_expected" "$output" && check_environment; then
@@ -104,7 +104,7 @@ run_test_detached() {
 
 	TESTS_RUN=$((TESTS_RUN + 1))
 	echo -n "Running test detached: $name "
-	expected_abduco_detached_output "$name" "$cmd" > "$output_expected" 2>&1
+	expected_abduco_detached_output "$name" "$cmd" > "$output_expected"
 
 	if $ABDUCO -n "$name" $cmd >/dev/null 2>&1 && sleep 1 &&
 	   $ABDUCO -a "$name" 2>&1 | sed 's/.$//' > "$output" &&
@@ -131,7 +131,7 @@ run_test_attached_detached() {
 	TESTS_RUN=$((TESTS_RUN + 1))
 	echo -n "Running test: $name "
 	$cmd >/dev/null 2>&1
-	expected_abduco_epilog "$name" $? > "$output_expected" 2>&1
+	expected_abduco_epilog "$name" $? > "$output_expected"
 
 	if detach | $ABDUCO $ABDUCO_OPTS -c "$name" $cmd >/dev/null 2>&1 && sleep 3 &&
 	   $ABDUCO -a "$name" 2>&1 | tail -1 | sed 's/.$//' > "$output" &&
@@ -182,7 +182,7 @@ run_test_detect_session() {
 	TESTS_RUN=$((TESTS_RUN + 1))
 	echo -n "Running test: $name "
 	$cmd >/dev/null 2>&1
-	expected_abduco_epilog "$name" $? > "$output_expected" 2>&1
+	expected_abduco_epilog "$name" $? > "$output_expected"
 
 	if detach | $ABDUCO $ABDUCO_OPTS -c "$name" $cmd >/dev/null 2>&1 && sleep 3 &&
        $ABDUCO -d "$name" &&
