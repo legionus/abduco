@@ -62,6 +62,17 @@ check_environment() {
 	return 0;
 }
 
+# diff wrapper that displays escape sequences visibly when there are differences
+diff_safe() {
+	local output
+	output=$(diff -u "$1" "$2")
+	local ret=$?
+	if [ $ret -ne 0 ]; then
+		echo "$output" | cat -v
+	fi
+	return $ret
+}
+
 test_non_existing_command() {
 	check_environment || return 1;
 	$ABDUCO -c test ./non-existing-command >/dev/null 2>&1
@@ -82,7 +93,7 @@ run_test_attached() {
 	expected_abduco_attached_output "$name" "$cmd" > "$output_expected"
 
 	if $ABDUCO -c "$name" $cmd 2>&1 | sed 's/.$//' > "$output" && sleep 1 &&
-	   diff -u "$output_expected" "$output" && check_environment; then
+	   diff_safe "$output_expected" "$output" && check_environment; then
 		rm "$output" "$output_expected"
 		TESTS_OK=$((TESTS_OK + 1))
 		echo "OK"
@@ -108,7 +119,7 @@ run_test_detached() {
 
 	if $ABDUCO -n "$name" $cmd >/dev/null 2>&1 && sleep 1 &&
 	   $ABDUCO -a "$name" 2>&1 | sed 's/.$//' > "$output" &&
-	   diff -u "$output_expected" "$output" && check_environment; then
+	   diff_safe "$output_expected" "$output" && check_environment; then
 		rm "$output" "$output_expected"
 		TESTS_OK=$((TESTS_OK + 1))
 		echo "OK"
@@ -135,7 +146,7 @@ run_test_attached_detached() {
 
 	if detach | $ABDUCO $ABDUCO_OPTS -c "$name" $cmd >/dev/null 2>&1 && sleep 3 &&
 	   $ABDUCO -a "$name" 2>&1 | tail -1 | sed 's/.$//' > "$output" &&
-	   diff -u "$output_expected" "$output" && check_environment; then
+	   diff_safe "$output_expected" "$output" && check_environment; then
 		rm "$output" "$output_expected"
 		TESTS_OK=$((TESTS_OK + 1))
 		echo "OK"
@@ -160,7 +171,7 @@ run_test_dvtm() {
 
 	: > "$output_expected"
 	if dvtm_session | $ABDUCO -c "$name" > "$output" 2>&1 &&
-	   diff -u "$output_expected" "$output" && check_environment; then
+	   diff_safe "$output_expected" "$output" && check_environment; then
 		rm "$output" "$output_expected"
 		TESTS_OK=$((TESTS_OK + 1))
 		echo "OK"
@@ -187,7 +198,7 @@ run_test_detect_session() {
 	if detach | $ABDUCO $ABDUCO_OPTS -c "$name" $cmd >/dev/null 2>&1 && sleep 3 &&
        $ABDUCO -d "$name" &&
 	   $ABDUCO -a "$name" 2>&1 | tail -1 | sed 's/.$//' > "$output" &&
-	   diff -u "$output_expected" "$output" && check_environment; then
+	   diff_safe "$output_expected" "$output" && check_environment; then
 		rm "$output" "$output_expected"
 		TESTS_OK=$((TESTS_OK + 1))
 		echo "OK"
