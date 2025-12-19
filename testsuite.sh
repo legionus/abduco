@@ -251,4 +251,50 @@ rm ./long-running.sh
 
 run_test_dvtm
 
+# Test EOF forwarding - ensures stdin EOF is properly forwarded to the application
+# and the session terminates cleanly (no lingering sessions)
+run_test_eof_forward() {
+	check_environment || return 1;
+
+	local name="eof-forward"
+
+	TESTS_RUN=$((TESTS_RUN + 1))
+	echo -n "Running test: $name "
+
+	# Run cat with piped input - cat should receive "hello", then EOF, then exit
+	if echo "hello" | $ABDUCO -c "$name" cat >/dev/null 2>&1 && sleep 1 &&
+	   check_environment; then
+		TESTS_OK=$((TESTS_OK + 1))
+		echo "OK"
+		return 0
+	else
+		echo "FAIL"
+		return 1
+	fi
+}
+
+# Test EOF with /dev/null stdin - ensures immediate EOF is handled
+run_test_eof_devnull() {
+	check_environment || return 1;
+
+	local name="eof-devnull"
+
+	TESTS_RUN=$((TESTS_RUN + 1))
+	echo -n "Running test: $name "
+
+	# Run cat with /dev/null stdin - cat should receive immediate EOF and exit
+	if $ABDUCO -c "$name" cat </dev/null >/dev/null 2>&1 && sleep 1 &&
+	   check_environment; then
+		TESTS_OK=$((TESTS_OK + 1))
+		echo "OK"
+		return 0
+	else
+		echo "FAIL"
+		return 1
+	fi
+}
+
+run_test_eof_forward
+run_test_eof_devnull
+
 [ $TESTS_OK -eq $TESTS_RUN ]

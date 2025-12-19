@@ -62,6 +62,7 @@ static int client_mainloop(void) {
 	sigaddset(&blockset, SIGWINCH);
 	sigprocmask(SIG_BLOCK, &blockset, NULL);
 
+	bool stdin_eof = false;
 	client.need_resize = true;
 	Packet pkt = {
 		.type = MSG_ATTACH,
@@ -73,7 +74,8 @@ static int client_mainloop(void) {
 	while (server.running) {
 		fd_set fds;
 		FD_ZERO(&fds);
-		FD_SET(STDIN_FILENO, &fds);
+		if (!stdin_eof)
+			FD_SET(STDIN_FILENO, &fds);
 		FD_SET(server.socket, &fds);
 
 		if (client.need_resize) {
@@ -135,7 +137,9 @@ static int client_mainloop(void) {
 				}
 			} else if (len == 0) {
 				debug("client-stdin: EOF\n");
-				return -1;
+				Packet eof_pkt = { .type = MSG_STDIN_EOF, .len = 0 };
+				client_send_packet(&eof_pkt);
+				stdin_eof = true;
 			}
 		}
 	}

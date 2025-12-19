@@ -336,6 +336,16 @@ static void server_mainloop(void) {
 						kill(-group_id, SIGWINCH);
 						break;
 					}
+				case MSG_STDIN_EOF: {
+					/* Forward EOF to pty - application sees EOF on stdin */
+					struct termios t;
+					if (tcgetattr(server.pty, &t) == 0) {
+						char eof_char = t.c_cc[VEOF];
+						if (write(server.pty, &eof_char, 1) < 0)
+							debug("MSG_STDIN_EOF write failed\n");
+					}
+					break;
+				}
 				case MSG_EXIT:
 					exit_packet_delivered = true;
 					/* fall through */
