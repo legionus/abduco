@@ -1,0 +1,29 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os:
+          - macos-latest
+          - ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Build
+      run: |
+        ./configure
+        make
+
+    - name: Test
+      run: |
+        if [ "$(uname)" = "Darwin" ]; then
+          script -q /dev/null sh -c "cat; ./testsuite.sh" </dev/null
+        else
+          script -q -e -c 'sh -c "cat; ./testsuite.sh"' </dev/null
+        fi
