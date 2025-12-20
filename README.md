@@ -17,6 +17,7 @@ cleaner, more robust implementation and is distributed under the
 
 ## News
 
+ * New releases are available [here](https://github.com/legionus/abduco/releases).
  * [abduco-0.6](https://www.brain-dump.org/projects/abduco/abduco-0.6.tar.gz)
    [released](https://lists.suckless.org/dev/1603/28589.html) (24.03.2016)
  * [abduco-0.5](https://www.brain-dump.org/projects/abduco/abduco-0.5.tar.gz)
