@@ -11,25 +11,21 @@ on:
       - master
       - for-master
 jobs:
-  build:
-    strategy:
-      matrix:
-        os:
-          - macos-latest
-          - ubuntu-latest
-      fail-fast: false
+  linux:
+    uses: ./.github/workflows/_common.yml
+    with:
+      os: ubuntu-latest
 
-    runs-on: ${{ matrix.os }}
-    steps:
+  macos:
+    uses: ./.github/workflows/_common.yml
+    with:
+      os: macos-latest
 
-    - name: Checkout
-      uses: actions/checkout@v6
+  freebsd:
+    uses: ./.github/workflows/_freebsd.yml
 
-    - name: Build
-      run: |
-        ./configure
-        make
+  openbsd:
+    uses: ./.github/workflows/_openbsd.yml
 
-    - name: Test
-      run: |
-        make test
+  solaris:
+    uses: ./.github/workflows/_solaris.yml
