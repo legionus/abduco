@@ -19,6 +19,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <signal.h>
 #include <termios.h>
 #include <unistd.h>
@@ -55,7 +56,7 @@ struct Client {
 
 struct entry {
 	char *data;
-	int len;
+	uint32_t len;
 	bool complete;
 	TAILQ_ENTRY(entry) entries;
 };

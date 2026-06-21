@@ -40,7 +40,7 @@ bool client_recv_packet(Server *srv, Packet *pkt) {
 }
 
 void client_add_flags(int flags) {
-	client.flags |= flags;
+	client.flags |= (unsigned int)flags;
 }
 
 void client_set_keys(char detach, char redraw) {
@@ -80,10 +80,10 @@ void client_setup_terminal(void) {
 	atexit(client_restore_terminal);
 
 	cur_term = orig_term;
-	cur_term.c_iflag &= ~(IGNBRK|BRKINT|PARMRK|ISTRIP|INLCR|IGNCR|ICRNL|IXON|IXOFF);
-	cur_term.c_oflag &= ~(OPOST);
-	cur_term.c_lflag &= ~(ECHO|ECHONL|ICANON|ISIG|IEXTEN);
-	cur_term.c_cflag &= ~(CSIZE|PARENB);
+	cur_term.c_iflag &= ~(tcflag_t)(IGNBRK|BRKINT|PARMRK|ISTRIP|INLCR|IGNCR|ICRNL|IXON|IXOFF);
+	cur_term.c_oflag &= ~(tcflag_t)(OPOST);
+	cur_term.c_lflag &= ~(tcflag_t)(ECHO|ECHONL|ICANON|ISIG|IEXTEN);
+	cur_term.c_cflag &= ~(tcflag_t)(CSIZE|PARENB);
 	cur_term.c_cflag |= CS8;
 	cur_term.c_cc[VLNEXT] = _POSIX_VDISABLE;
 	cur_term.c_cc[VMIN] = 1;
@@ -125,12 +125,12 @@ int client_mainloop(Server *srv) {
 		if (client.need_resize) {
 			struct winsize ws;
 			if (ioctl(STDIN_FILENO, TIOCGWINSZ, &ws) != -1) {
-				Packet pkt = {
+				Packet resize_pkt = {
 					.type = MSG_RESIZE,
 					.u = { .ws = { .rows = ws.ws_row, .cols = ws.ws_col } },
-					.len = sizeof(pkt.u.ws),
+					.len = sizeof(resize_pkt.u.ws),
 				};
-				if (client_send_packet(srv, &pkt))
+				if (client_send_packet(srv, &resize_pkt))
 					client.need_resize = false;
 			} else {
 				debug_errno("client-resize: TIOCGWINSZ failed fd=%d",
@@ -145,43 +145,43 @@ int client_mainloop(Server *srv) {
 		}
 
 		if (FD_ISSET(srv->socket, &fds)) {
-			Packet pkt;
-			if (client_recv_packet(srv, &pkt)) {
-				switch (pkt.type) {
+			Packet recv_pkt;
+			if (client_recv_packet(srv, &recv_pkt)) {
+				switch (recv_pkt.type) {
 				case MSG_CONTENT:
 					if (!passthrough)
-						write_all(STDOUT_FILENO, pkt.u.msg, pkt.len);
+						write_all(STDOUT_FILENO, recv_pkt.u.msg, recv_pkt.len);
 					break;
 				case MSG_RESIZE:
 					client.need_resize = true;
 					break;
 				case MSG_EXIT:
-					client_send_packet(srv, &pkt);
+					client_send_packet(srv, &recv_pkt);
 					close(srv->socket);
-					return pkt.u.i;
+					return (int)recv_pkt.u.i;
 				}
 			}
 		}
 
 		if (FD_ISSET(STDIN_FILENO, &fds)) {
-			Packet pkt = { .type = MSG_CONTENT };
-			ssize_t len = read(STDIN_FILENO, pkt.u.msg, sizeof(pkt.u.msg));
+			Packet stdin_pkt = { .type = MSG_CONTENT };
+			ssize_t len = read(STDIN_FILENO, stdin_pkt.u.msg, sizeof(stdin_pkt.u.msg));
 			if (len == -1 && errno != EAGAIN && errno != EINTR)
 				die("client-stdin");
 			if (len > 0) {
-				pkt.len = len;
-				if (redraw_key && pkt.u.msg[0] == redraw_key) {
+				stdin_pkt.len = (uint32_t)len;
+				if (redraw_key && stdin_pkt.u.msg[0] == redraw_key) {
 					debug("client-stdin: redraw key received\n");
 					client.need_resize = true;
-				} else if (pkt.u.msg[0] == detach_key) {
+				} else if (stdin_pkt.u.msg[0] == detach_key) {
 					debug("client-stdin: detach key received\n");
-					pkt.type = MSG_DETACH;
-					pkt.len = 0;
-					client_send_packet(srv, &pkt);
+					stdin_pkt.type = MSG_DETACH;
+					stdin_pkt.len = 0;
+					client_send_packet(srv, &stdin_pkt);
 					close(srv->socket);
 					return -1;
 				} else if (!(client.flags & CLIENT_READONLY)) {
-					client_send_packet(srv, &pkt);
+					client_send_packet(srv, &stdin_pkt);
 				}
 			} else if (len == 0) {
 				debug("client-stdin: EOF, forwarding MSG_STDIN_EOF\n");

@@ -17,6 +17,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
@@ -121,8 +122,11 @@ static pid_t session_exists(Server *srv, const char *name) {
 	pid_t pid = 0;
 	if ((srv->socket = session_connect(srv, name)) == -1)
 		return pid;
-	if (client_recv_packet(srv, &pkt) && pkt.type == MSG_PID)
-		pid = pkt.u.l;
+	if (client_recv_packet(srv, &pkt) && pkt.type == MSG_PID) {
+		/* pkt.u.l is uint64_t; clamp to valid pid_t range */
+		if (pkt.u.l <= (uint64_t)INT_MAX)
+			pid = (pid_t)pkt.u.l;
+	}
 	close(srv->socket);
 	return pid;
 }
@@ -248,7 +252,7 @@ static bool create_session(Server *srv, const char *name, char * const argv[]) {
 		while (waitpid(pid, NULL, 0) == -1 && errno == EINTR);
 		ssize_t len = read_all(client_pipe[0], errormsg, sizeof(errormsg));
 		if (len > 0) {
-			write_all(STDERR_FILENO, errormsg, len);
+			write_all(STDERR_FILENO, errormsg, (size_t)len);
 			session_unlink_socket();
 			exit(EXIT_FAILURE);
 		}
@@ -362,7 +366,7 @@ int main(int argc, char *argv[]) {
 		case 'c':
 		case 'd':
 		case 'n':
-			action = opt;
+			action = (char)opt;
 			break;
 		case 'e':
 			if (!optarg)
@@ -392,10 +396,15 @@ int main(int argc, char *argv[]) {
 		case 'L':
 			if (!optarg)
 				 usage();
-			srv->screen_max_rows = atoi(optarg);
-			if (srv->screen_max_rows < 0) {
-				fputs("ERROR: a negative value for the number of rows is meaningless.\n", stderr);
-				usage();
+			{
+				char *endptr;
+				errno = 0;
+				long val = strtol(optarg, &endptr, 10);
+				if (errno == ERANGE || endptr == optarg || *endptr != '\0' || val < 0 || val > INT_MAX) {
+					fputs("ERROR: invalid value for -L (must be a non-negative integer).\n", stderr);
+					usage();
+				}
+				srv->screen_max_rows = (int)val;
 			}
 			break;
 		case 'v':
@@ -474,13 +483,13 @@ int main(int argc, char *argv[]) {
 			goto redo;
 		}
 		break;
-    case 'd':
-        if (session_exists(srv, srv->session_name)) {
-            return EXIT_SUCCESS;
-        } else {
-            return EXIT_FAILURE;
-        }
-        break;
+	case 'd':
+		if (session_exists(srv, srv->session_name)) {
+			return EXIT_SUCCESS;
+		} else {
+			return EXIT_FAILURE;
+		}
+		break;
 	}
 
 	return 0;

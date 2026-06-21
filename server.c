@@ -118,7 +118,7 @@ int server_set_socket_non_blocking(int sock) {
 		debug_errno("server-nonblock: F_GETFL failed fd=%d", sock);
 		flags = 0;
 	}
-    	return fcntl(sock, F_SETFL, flags | O_NONBLOCK);
+	return fcntl(sock, F_SETFL, flags | O_NONBLOCK);
 }
 
 void server_set_active(Server *srv) {
@@ -129,7 +129,7 @@ static bool server_read_pty(Server *srv, Packet *pkt) {
 	pkt->type = MSG_CONTENT;
 	ssize_t len = read(srv->pty, pkt->u.msg, sizeof(pkt->u.msg));
 	if (len > 0) {
-		pkt->len = len;
+		pkt->len = (uint32_t)len;
 		print_packet("server-read-pty:", pkt);
 	} else if (len == 0) {
 		debug("server-read-pty: EOF pty=%d\n", srv->pty);
@@ -230,7 +230,7 @@ static Client *server_accept_client(Server *srv) {
 	Packet pkt = {
 		.type = MSG_PID,
 		.len = sizeof pkt.u.l,
-		.u.l = getpid(),
+		.u.l = (uint64_t)getpid(),
 	};
 	server_send_packet(c, &pkt);
 
@@ -263,12 +263,17 @@ static void server_send_screen_buffer(Server *srv, Client *c) {
 	struct entry *np;
 
 	TAILQ_FOREACH_REVERSE(np, &srv->screen, screenhead, entries) {
-		Packet pkt = {
-			.type = MSG_CONTENT,
-			.len = np->len,
-		};
-		strncpy(pkt.u.msg, np->data, np->len);
-		server_send_packet(c, &pkt);
+		size_t offset = 0;
+		while (offset < np->len) {
+			Packet pkt = { .type = MSG_CONTENT };
+			size_t chunk = np->len - offset;
+			if (chunk > sizeof(pkt.u.msg))
+				chunk = sizeof(pkt.u.msg);
+			pkt.len = (uint32_t)chunk;
+			memcpy(pkt.u.msg, np->data + offset, chunk);
+			server_send_packet(c, &pkt);
+			offset += chunk;
+		}
 	}
 }
 
@@ -286,28 +291,32 @@ static void server_preserve_screen_data(Server *srv, Packet *pkt) {
 
 	while (str != end) {
 		char *data;
-		uint32_t i, dlen;
+		uint32_t dlen;
 
 		bool newline = false;
 		char *token = end;
 
-		for (i = 0; i < len; i++) {
-			if (str[i] == '\n') {
-				token = str + i + 1;
-				newline = true;
-				break;
-			}
+		char *nl = memchr(str, '\n', len);
+		if (nl) {
+			token = nl + 1;
+			newline = true;
 		}
 
-		if ((dlen = token - str) <= 0)
+		ptrdiff_t diff = token - str;
+		if (diff == 0)
 			break;
+		dlen = (uint32_t)diff;
 
 		scrline = TAILQ_FIRST(&srv->screen);
 
 		if (scrline && !scrline->complete) {
-			data = realloc(scrline->data, scrline->len + dlen);
-			if (!data)
+			/* Extend existing incomplete line */
+			char *old_data = scrline->data;
+			data = realloc(old_data, scrline->len + dlen);
+			if (!data) {
+				/* realloc failed: old_data still valid, don't leak it */
 				die("unable to extend string in the screen buffer");
+			}
 
 			memcpy(data + scrline->len, str, dlen);
 
@@ -322,8 +331,10 @@ static void server_preserve_screen_data(Server *srv, Packet *pkt) {
 			memcpy(data, str, dlen);
 
 			scrline = malloc(sizeof(*scrline));
-			if (!scrline)
+			if (!scrline) {
+				free(data);
 				die("unable to allocate memory for screen buffer element");
+			}
 
 			scrline->complete = newline;
 			scrline->data = data;
@@ -494,7 +505,7 @@ void server_mainloop(Server *srv) {
 				if (srv->exit_status != -1) {
 					Packet pkt = {
 						.type = MSG_EXIT,
-						.u.i = srv->exit_status,
+						.u.i = (uint32_t)srv->exit_status,
 						.len = sizeof(pkt.u.i),
 					};
 					if (server_send_packet(c, &pkt))

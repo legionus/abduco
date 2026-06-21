@@ -50,14 +50,17 @@ static bool xsnprintf(char *buf, size_t size, const char *fmt, ...) {
 	return true;
 }
 
-static bool create_socket_dir(const Server *srv, struct sockaddr_un *sockaddr) {
-	sockaddr->sun_path[0] = '\0';
+/* Renamed parameter to 'sa' to avoid shadowing global 'sockaddr' */
+static bool create_socket_dir(const Server *srv, struct sockaddr_un *sa) {
+	sa->sun_path[0] = '\0';
 	int socketfd = socket(AF_UNIX, SOCK_STREAM, 0);
 	if (socketfd == -1)
 		return false;
 
-	const size_t maxlen = sizeof(sockaddr->sun_path);
+	const size_t maxlen = sizeof(sa->sun_path);
 	uid_t uid = getuid();
+	/* Cache pid once to avoid repeated syscalls */
+	pid_t pid = getpid();
 	struct passwd *pw = getpwuid(uid);
 
 	for (unsigned int i = 0; i < countof(socket_dirs); i++) {
@@ -72,36 +75,36 @@ static bool create_socket_dir(const Server *srv, struct sockaddr_un *sockaddr) {
 		}
 		if (!dir->path || !dir->path[0])
 			continue;
-		if (!xsnprintf(sockaddr->sun_path, maxlen, "%s/%s%s/", dir->path, ishome ? "." : "", srv->name))
+		if (!xsnprintf(sa->sun_path, maxlen, "%s/%s%s/", dir->path, ishome ? "." : "", srv->name))
 			continue;
 		mode_t mask = umask(0);
-		int r = mkdir(sockaddr->sun_path, dir->personal ? S_IRWXU : S_IRWXU|S_IRWXG|S_IRWXO|S_ISVTX);
+		int r = mkdir(sa->sun_path, dir->personal ? S_IRWXU : S_IRWXU|S_IRWXG|S_IRWXO|S_ISVTX);
 		umask(mask);
 		if (r != 0 && errno != EEXIST)
 			continue;
-		if (lstat(sockaddr->sun_path, &sb) != 0)
+		if (lstat(sa->sun_path, &sb) != 0)
 			continue;
 		if (!S_ISDIR(sb.st_mode)) {
 			errno = ENOTDIR;
 			continue;
 		}
 
-		size_t dirlen = strlen(sockaddr->sun_path);
+		size_t dirlen = strlen(sa->sun_path);
 		if (!dir->personal) {
 			/* create subdirectory only accessible to user */
-			if (pw && !xsnprintf(sockaddr->sun_path+dirlen, maxlen-dirlen, "%s/", pw->pw_name))
+			if (pw && !xsnprintf(sa->sun_path+dirlen, maxlen-dirlen, "%s/", pw->pw_name))
 				continue;
-			if (!pw && !xsnprintf(sockaddr->sun_path+dirlen, maxlen-dirlen, "%d/", uid))
+			if (!pw && !xsnprintf(sa->sun_path+dirlen, maxlen-dirlen, "%d/", uid))
 				continue;
-			if (mkdir(sockaddr->sun_path, S_IRWXU) != 0 && errno != EEXIST)
+			if (mkdir(sa->sun_path, S_IRWXU) != 0 && errno != EEXIST)
 				continue;
-			if (lstat(sockaddr->sun_path, &sb) != 0)
+			if (lstat(sa->sun_path, &sb) != 0)
 				continue;
 			if (!S_ISDIR(sb.st_mode)) {
 				errno = ENOTDIR;
 				continue;
 			}
-			dirlen = strlen(sockaddr->sun_path);
+			dirlen = strlen(sa->sun_path);
 		}
 
 		if (sb.st_uid != uid || sb.st_mode & (S_IRWXG|S_IRWXO)) {
@@ -109,15 +112,15 @@ static bool create_socket_dir(const Server *srv, struct sockaddr_un *sockaddr) {
 			continue;
 		}
 
-		if (!xsnprintf(sockaddr->sun_path+dirlen, maxlen-dirlen, ".abduco-%d", getpid()))
+		if (!xsnprintf(sa->sun_path+dirlen, maxlen-dirlen, ".abduco-%d", pid))
 			continue;
 
-		socklen_t socklen = offsetof(struct sockaddr_un, sun_path) + strlen(sockaddr->sun_path) + 1;
-		if (bind(socketfd, (struct sockaddr*)sockaddr, socklen) == -1)
+		socklen_t socklen = (socklen_t)(offsetof(struct sockaddr_un, sun_path) + strlen(sa->sun_path) + 1);
+		if (bind(socketfd, (struct sockaddr*)sa, socklen) == -1)
 			continue;
-		unlink(sockaddr->sun_path);
+		unlink(sa->sun_path);
 		close(socketfd);
-		sockaddr->sun_path[dirlen] = '\0';
+		sa->sun_path[dirlen] = '\0';
 		return true;
 	}
 
@@ -125,41 +128,48 @@ static bool create_socket_dir(const Server *srv, struct sockaddr_un *sockaddr) {
 	return false;
 }
 
-static bool set_socket_name(const Server *srv, struct sockaddr_un *sockaddr, const char *name) {
-	const size_t maxlen = sizeof(sockaddr->sun_path);
+/* Renamed parameter to 'sa' to avoid shadowing global 'sockaddr' */
+static bool set_socket_name(const Server *srv, struct sockaddr_un *sa, const char *name) {
+	const size_t maxlen = sizeof(sa->sun_path);
 	const char *session_name = NULL;
 	char buf[maxlen];
 
 	if (name[0] == '/') {
-		if (strlen(name) >= maxlen) {
+		/* Absolute path: length already checked, copy with explicit NUL */
+		size_t namelen = strlen(name);
+		if (namelen >= maxlen) {
 			errno = ENAMETOOLONG;
 			return false;
 		}
-		strncpy(sockaddr->sun_path, name, maxlen);
+		memcpy(sa->sun_path, name, namelen + 1);
 	} else if (name[0] == '.' && (name[1] == '.' || name[1] == '/')) {
 		char *cwd = getcwd(buf, sizeof buf);
 		if (!cwd)
 			return false;
-		if (!xsnprintf(sockaddr->sun_path, maxlen, "%s/%s", cwd, name))
+		if (!xsnprintf(sa->sun_path, maxlen, "%s/%s", cwd, name))
 			return false;
 	} else {
-		if (!create_socket_dir(srv, sockaddr))
+		if (!create_socket_dir(srv, sa))
 			return false;
-		if (strlen(sockaddr->sun_path) + strlen(name) + strlen(srv->host) >= maxlen) {
-			errno = ENAMETOOLONG;
+		/* Use xsnprintf to safely append name+host in one shot */
+		size_t dirlen = strlen(sa->sun_path);
+		if (!xsnprintf(sa->sun_path + dirlen, maxlen - dirlen, "%s%s", name, srv->host))
 			return false;
-		}
 		session_name = name;
-		strncat(sockaddr->sun_path, name, maxlen - strlen(sockaddr->sun_path) - 1);
-		strncat(sockaddr->sun_path, srv->host, maxlen - strlen(sockaddr->sun_path) - 1);
 	}
 
 	if (!session_name) {
-		strncpy(buf, sockaddr->sun_path, sizeof buf);
+		/* basename may modify its argument; work on a local copy */
+		size_t plen = strlen(sa->sun_path);
+		if (plen >= sizeof buf) {
+			errno = ENAMETOOLONG;
+			return false;
+		}
+		memcpy(buf, sa->sun_path, plen + 1);
 		session_name = basename(buf);
 	}
 	setenv("ABDUCO_SESSION", session_name, 1);
-	setenv("ABDUCO_SOCKET", sockaddr->sun_path, 1);
+	setenv("ABDUCO_SOCKET", sa->sun_path, 1);
 
 	return true;
 }
@@ -177,12 +187,12 @@ bool session_set_socket_dir(const Server *srv) {
 }
 
 int session_socket_bind(int fd) {
-	socklen_t len = offsetof(struct sockaddr_un, sun_path) + strlen(sockaddr.sun_path) + 1;
+	socklen_t len = (socklen_t)(offsetof(struct sockaddr_un, sun_path) + strlen(sockaddr.sun_path) + 1);
 	return bind(fd, (struct sockaddr*)&sockaddr, len);
 }
 
 int session_socket_connect(int fd) {
-	socklen_t len = offsetof(struct sockaddr_un, sun_path) + strlen(sockaddr.sun_path) + 1;
+	socklen_t len = (socklen_t)(offsetof(struct sockaddr_un, sun_path) + strlen(sockaddr.sun_path) + 1);
 	return connect(fd, (struct sockaddr*)&sockaddr, len);
 }
 
