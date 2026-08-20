@@ -63,7 +63,7 @@ void die(const char *s) {
 }
 
 static void usage(void) {
-	fprintf(stderr, "usage: abduco [-a|-A|-c|-n] [-p] [-r] [-q] [-l] [-f] [-e detachkey] [-L num] name command\n");
+	fprintf(stderr, "usage: abduco [-a|-A|-c|-d|-n] [-p] [-r] [-q] [-l] [-f] [-e detachkey] [-L num] name command\n");
 	fprintf(stderr, "Try 'abduco -h' for more information.\n");
 	exit(EXIT_FAILURE);
 }
